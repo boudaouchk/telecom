@@ -1,0 +1,79 @@
+/******************************************************
+ * Projet : Alarme anti-intrusion GSM
+ * Carte  : ESP32 + SIM800L
+ * Langue : C++
+ * Auteur : Karim Boudaouch
+ * Date   : 2025
+ * Fonction : Détecte un mouvement via PIR et envoie un SMS
+ ******************************************************/
+
+#include <HardwareSerial.h>  // Pour communication série avec SIM800L
+
+// === Définition des broches ===
+#define PIR_PIN     5   // Entrée capteur PIR
+#define LED_PIN     2   // LED d’alerte
+#define BUZZER_PIN  4   // Buzzer
+
+// === Configuration SIM800L ===
+HardwareSerial sim800(1);     // Utilisation de l’UART1
+#define SIM800_TX 17           // TX du SIM800L vers GPIO17 (RX ESP)
+#define SIM800_RX 16           // RX du SIM800L vers GPIO16 (TX ESP)
+
+// === Numéro de téléphone à alerter ===
+String phoneNumber = "+336XXXXXXXX";
+
+// === Variables d'état ===
+bool intrusionDetectee = false;  // État de détection
+unsigned long dernierAlerte = 0; // Timestamp dernière alerte
+const unsigned long delaiAntiSpam = 15000; // 15s entre 2 SMS
+
+// === Fonction : Envoi d’un SMS via SIM800L ===
+void envoyerSMS(String message) {
+  Serial.println("[SIM800L] Envoi SMS...");
+  sim800.println("AT+CMGF=1"); // Mode texte
+  delay(500);
+  sim800.print("AT+CMGS=\"");
+  sim800.print(phoneNumber);
+  sim800.println("\"");
+  delay(500);
+  sim800.print(message);
+  delay(500);
+  sim800.write(26); // CTRL+Z pour valider l'envoi
+  delay(2000);
+}
+
+// === Initialisation ===
+void setup() {
+  Serial.begin(115200);
+  sim800.begin(9600, SERIAL_8N1, SIM800_TX, SIM800_RX);
+
+  pinMode(PIR_PIN, INPUT);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  Serial.println("=== Système d’alarme prêt ===");
+}
+
+// === Boucle principale ===
+void loop() {
+  bool mouvement = digitalRead(PIR_PIN);
+
+  if (mouvement && (millis() - dernierAlerte > delaiAntiSpam)) {
+    intrusionDetectee = true;
+    dernierAlerte = millis();
+
+    // Alerte locale
+    digitalWrite(LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+
+    Serial.println("[ALERTE] Intrusion détectée !");
+    envoyerSMS("ALERTE : Intrusion détectée !");
+    delay(5000);
+
+    // Extinction alerte locale
+    digitalWrite(LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+  } else if (!mouvement) {
+    intrusionDetectee = false;
+  }
+}
