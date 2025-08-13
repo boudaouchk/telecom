@@ -1,0 +1,71 @@
+/******************************************************
+ * Projet : Alarme anti-intrusion GSM
+ * Carte  : ESP32 ou Arduino UNO + SIM800L
+ * Langue : C++
+ * Auteur : Karim Boudaouch
+ * Date   : 2025
+ ******************************************************/
+
+#include <HardwareSerial.h>  // Pour communication série avec SIM800L
+
+// === Définition des broches ===
+#define PIR_PIN  5   // Capteur PIR sur GPIO 5
+#define LED_PIN  2   // LED alerte sur GPIO 2
+#define BUZZER_PIN 4 // Buzzer sur GPIO 4
+
+// === Configuration SIM800L ===
+HardwareSerial sim800(1); // UART1 de l'ESP32
+#define SIM800_TX 17       // Broche TX du SIM800L vers GPIO17
+#define SIM800_RX 16       // Broche RX du SIM800L vers GPIO16
+String phoneNumber = "+336XXXXXXXX"; // Numéro à appeler/SMS
+
+// === Variables ===
+bool intrusionDetectee = false;
+
+// === Fonction pour envoyer un SMS via SIM800L ===
+void envoyerSMS(String message) {
+  sim800.println("AT+CMGF=1"); // Mode texte
+  delay(500);
+  sim800.print("AT+CMGS=\"");
+  sim800.print(phoneNumber);
+  sim800.println("\"");
+  delay(500);
+  sim800.print(message);
+  delay(500);
+  sim800.write(26); // Code ASCII CTRL+Z pour envoyer
+  delay(2000);
+}
+
+// === Initialisation ===
+void setup() {
+  Serial.begin(115200);
+  sim800.begin(9600, SERIAL_8N1, SIM800_TX, SIM800_RX);
+
+  pinMode(PIR_PIN, INPUT);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  Serial.println("Système d'alarme prêt.");
+}
+
+// === Boucle principale ===
+void loop() {
+  if (digitalRead(PIR_PIN) == HIGH) { // Mouvement détecté
+    if (!intrusionDetectee) { // Éviter spam SMS
+      intrusionDetectee = true;
+
+      // Alerte locale
+      digitalWrite(LED_PIN, HIGH);
+      digitalWrite(BUZZER_PIN, HIGH);
+
+      Serial.println("Intrusion détectée !");
+      envoyerSMS("ALERTE : Intrusion détectée !");
+
+      delay(5000); // Maintenir alerte 5s
+      digitalWrite(LED_PIN, LOW);
+      digitalWrite(BUZZER_PIN, LOW);
+    }
+  } else {
+    intrusionDetectee = false; // Réinitialiser état
+  }
+}
