@@ -1,0 +1,96 @@
+/******************************************************
+ * Projet : Station météo IoT
+ * Carte  : ESP32
+ * Langage : C++
+ * Auteur : Karim Boudaouch
+ * Date   : 2025
+ ******************************************************/
+
+#include <Wire.h>
+#include <Adafruit_BME280.h>
+#include <Adafruit_SSD1306.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+// === Config WiFi ===
+const char* ssid = "VOTRE_SSID";
+const char* password = "VOTRE_MOT_DE_PASSE";
+
+// === Config API ===
+String apiUrl = "http://votre_serveur/api/meteo";
+
+// === Capteur BME280 ===
+Adafruit_BME280 bme;
+
+// === Écran OLED ===
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// === Setup ===
+void setup() {
+  Serial.begin(115200);
+
+  // I2C
+  Wire.begin(21, 22);
+
+  // BME280
+  if (!bme.begin(0x76)) {
+    Serial.println("Erreur BME280 !");
+    while (1);
+  }
+
+  // OLED
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("Erreur OLED !");
+    while (1);
+  }
+
+  // WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Connexion WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println(" Connecté !");
+}
+
+// === Boucle principale ===
+void loop() {
+  // Lecture capteur
+  float temp = bme.readTemperature();
+  float hum = bme.readHumidity();
+  float pres = bme.readPressure() / 100.0F;
+
+  // Affichage OLED
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0,0);
+  display.printf("Temp: %.2f C\n", temp);
+  display.printf("Hum : %.2f %%\n", hum);
+  display.printf("Pres: %.2f hPa\n", pres);
+  display.display();
+
+  // Envoi API
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(apiUrl);
+    http.addHeader("Content-Type", "application/json");
+
+    String payload = "{\"temperature\":" + String(temp) +
+                     ",\"humidite\":" + String(hum) +
+                     ",\"pression\":" + String(pres) + "}";
+
+    int code = http.POST(payload);
+    if (code > 0) {
+      Serial.printf("Envoi OK (%d)\n", code);
+    } else {
+      Serial.printf("Erreur envoi (%d)\n", code);
+    }
+    http.end();
+  }
+
+  delay(60000); // 1 min
+}
