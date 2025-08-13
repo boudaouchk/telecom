@@ -1,0 +1,86 @@
+/******************************************************
+ * Projet : Contrôle moteur DC avec PID
+ * Carte  : ESP32
+ * Langage : C++
+ * Auteur : Karim Boudaouch
+ * Date : 2025
+ ******************************************************/
+
+// === Paramètres moteur et encodeur ===
+#define ENCODER_A 34
+#define ENCODER_B 35
+#define MOTOR_IN1 25
+#define MOTOR_IN2 26
+#define MOTOR_PWM 27
+
+// === Variables encodeur ===
+volatile int pulseCount = 0;
+unsigned long lastTime = 0;
+float motorSpeed = 0.0; // en tours/sec
+
+// === PID ===
+float Kp = 1.2, Ki = 0.5, Kd = 0.1;
+float setpoint = 5.0; // vitesse désirée en tours/sec
+float integral = 0.0, lastError = 0.0;
+
+// === Interruption encodeur ===
+void IRAM_ATTR encoderISR() {
+  pulseCount++;
+}
+
+// === Initialisation ===
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(MOTOR_IN1, OUTPUT);
+  pinMode(MOTOR_IN2, OUTPUT);
+  pinMode(MOTOR_PWM, OUTPUT);
+
+  pinMode(ENCODER_A, INPUT_PULLUP);
+  pinMode(ENCODER_B, INPUT_PULLUP);
+
+  attachInterrupt(digitalPinToInterrupt(ENCODER_A), encoderISR, RISING);
+
+  lastTime = millis();
+}
+
+// === Fonction pour calculer vitesse moteur ===
+float calculerVitesse() {
+  unsigned long currentTime = millis();
+  unsigned long elapsed = currentTime - lastTime;
+  lastTime = currentTime;
+
+  // Nombre de tours = impulsions / (impulsions par tour)
+  float tours = (float)pulseCount / 20.0; // ex: encodeur 20 pulses/tour
+  pulseCount = 0;
+
+  return tours / (elapsed / 1000.0); // tours/sec
+}
+
+// === Fonction PID ===
+float calculerPID(float setpoint, float vitesse) {
+  float erreur = setpoint - vitesse;
+  integral += erreur;
+  float derivative = erreur - lastError;
+  lastError = erreur;
+
+  return (Kp * erreur) + (Ki * integral) + (Kd * derivative);
+}
+
+// === Boucle principale ===
+void loop() {
+  motorSpeed = calculerVitesse();
+
+  float output = calculerPID(setpoint, motorSpeed);
+  output = constrain(output, 0, 255);
+
+  // Sens de rotation fixé en avant
+  digitalWrite(MOTOR_IN1, HIGH);
+  digitalWrite(MOTOR_IN2, LOW);
+  analogWrite(MOTOR_PWM, (int)output);
+
+  Serial.printf("Vitesse : %.2f tours/sec | Consigne : %.2f | PWM : %.0f\n",
+                motorSpeed, setpoint, output);
+
+  delay(100);
+}
